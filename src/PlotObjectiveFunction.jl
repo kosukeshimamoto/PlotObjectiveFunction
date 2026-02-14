@@ -15,6 +15,7 @@ import GR
                    contour_levels=10,
                    xtick_count=3,
                    show_reference_legend=true,
+                   use_threads=false,
                    linecolor=:royalblue, refcolor=:darkorange)
 
 Plot an objective function around `x0`.
@@ -40,6 +41,8 @@ Keyword arguments:
 - `contour_levels`: number of contour levels to overlay on 2D heatmaps (default: 10). Set to 0 to disable.
 - `xtick_count`: number of x-axis tick labels to show (default: 3).
 - `show_reference_legend`: show `True`/`Min` legend entries (default: true).
+- `use_threads`: evaluate objective values with `Threads.@threads` (default: false).
+  When enabled, `f` must be thread-safe.
 - `linecolor`: line color for 1D plots (default: blue).
 - `refcolor`: reference line color for `x0` (default: orange).
 
@@ -69,6 +72,7 @@ function plot_objective(
     contour_levels::Integer = 10,
     xtick_count::Integer = 3,
     show_reference_legend::Bool = true,
+    use_threads::Bool = false,
     linecolor = :royalblue,
     refcolor = :darkorange,
 )
@@ -156,11 +160,18 @@ function plot_objective(
         for i in 1:n
             xs = param_range(x0v[i])
             yvals = Vector{Float64}(undef, length(xs))
-            x = copy(x0v)
-
-            for (k, val) in enumerate(xs)
-                x[i] = val
-                yvals[k] = Float64(f(x))
+            if use_threads
+                Threads.@threads for sample_index in eachindex(xs)
+                    parameter_values = copy(x0v)
+                    parameter_values[i] = xs[sample_index]
+                    yvals[sample_index] = Float64(f(parameter_values))
+                end
+            else
+                parameter_values = copy(x0v)
+                for (sample_index, sample_value) in enumerate(xs)
+                    parameter_values[i] = sample_value
+                    yvals[sample_index] = Float64(f(parameter_values))
+                end
             end
 
             plt = plot(
@@ -214,13 +225,25 @@ function plot_objective(
                 xs = param_range(x0v[i])
                 ys = param_range(x0v[j])
                 z = Matrix{Float64}(undef, length(ys), length(xs))
-                x = copy(x0v)
-
-                for (iy, yv) in enumerate(ys)
-                    for (ix, xv) in enumerate(xs)
-                        x[i] = xv
-                        x[j] = yv
-                        z[iy, ix] = Float64(f(x))
+                cartesian_grid_indices = CartesianIndices(z)
+                if use_threads
+                    Threads.@threads for linear_index in eachindex(cartesian_grid_indices)
+                        grid_index = cartesian_grid_indices[linear_index]
+                        row_index = grid_index[1]
+                        col_index = grid_index[2]
+                        parameter_values = copy(x0v)
+                        parameter_values[i] = xs[col_index]
+                        parameter_values[j] = ys[row_index]
+                        z[row_index, col_index] = Float64(f(parameter_values))
+                    end
+                else
+                    parameter_values = copy(x0v)
+                    for grid_index in cartesian_grid_indices
+                        row_index = grid_index[1]
+                        col_index = grid_index[2]
+                        parameter_values[i] = xs[col_index]
+                        parameter_values[j] = ys[row_index]
+                        z[row_index, col_index] = Float64(f(parameter_values))
                     end
                 end
 

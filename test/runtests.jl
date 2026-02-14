@@ -41,6 +41,21 @@ using PlotObjectiveFunction
     @test length(hidden_legend_result.one_d) == length(x0)
     @test length(hidden_legend_result.two_d) == length(x0) * (length(x0) - 1) ÷ 2
 
+    threaded_result = plot_objective(
+        f,
+        x0;
+        outdir = outdir,
+        basename = "test_threads",
+        resolution = 8,
+        output = :both,
+        use_threads = true,
+    )
+    @test isfile(threaded_result.summary)
+    @test length(threaded_result.one_d) == length(x0)
+    @test length(threaded_result.two_d) == length(x0) * (length(x0) - 1) ÷ 2
+    @test all(isfile, threaded_result.one_d)
+    @test all(isfile, threaded_result.two_d)
+
     @test_throws ArgumentError plot_objective(
         f,
         x0;

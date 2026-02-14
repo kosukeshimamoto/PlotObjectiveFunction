@@ -56,6 +56,12 @@ using Plots
 plot_objective(f, x0; colormap=cgrad(:viridis, 256), contour_levels=10)
 ```
 
+To evaluate objective grids in parallel:
+
+```julia
+plot_objective(f, x0; use_threads=true)
+```
+
 To see what files would be written for all combinations of output-related options (dry-run):
 
 ```julia
@@ -76,6 +82,8 @@ Individual files:
 - The default range is ±50% around each parameter value.
 - `resolution` is the number of points per axis (1D uses `n` points; 2D uses `n^2` evaluations).
 - If a parameter value is zero, `zero_range` (default: 1.0) is used instead.
+- Set `use_threads=true` to parallelize objective evaluations. Actual speedup requires
+  starting Julia with multiple threads (for example, `JULIA_NUM_THREADS=8`).
 - 1D plots include a red vertical line at the `x0` position.
 - 2D plots include red cross-lines at `(x0[i], x0[j])`.
 - The legend marks the reference point as `True` and the sampled minimum as `Min`.
