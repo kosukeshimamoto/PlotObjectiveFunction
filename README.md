@@ -78,5 +78,9 @@ Individual files:
 - If a parameter value is zero, `zero_range` (default: 1.0) is used instead.
 - 1D plots include a red vertical line at the `x0` position.
 - 2D plots include red cross-lines at `(x0[i], x0[j])`.
+- The legend marks the reference point as `True` and the sampled minimum as `Min`.
+- Set `show_reference_legend=false` to hide those legend entries.
 - Summary pages are A4-sized with 3 columns and 4-5 rows, and plots are ordered
   as 1D first, then 2D.
+- In this repository, `plots/` is ignored except for one sample output:
+  `plots/quadratic5_demo/objective_plot_quad5.pdf`.

@@ -14,6 +14,7 @@ import GR
                    colormap=cgrad(:viridis, 256),
                    contour_levels=10,
                    xtick_count=3,
+                   show_reference_legend=true,
                    linecolor=:royalblue, refcolor=:darkorange)
 
 Plot an objective function around `x0`.
@@ -38,6 +39,7 @@ Keyword arguments:
 - `colormap`: color map for heatmaps (default: viridis).
 - `contour_levels`: number of contour levels to overlay on 2D heatmaps (default: 10). Set to 0 to disable.
 - `xtick_count`: number of x-axis tick labels to show (default: 3).
+- `show_reference_legend`: show `True`/`Min` legend entries (default: true).
 - `linecolor`: line color for 1D plots (default: blue).
 - `refcolor`: reference line color for `x0` (default: orange).
 
@@ -66,6 +68,7 @@ function plot_objective(
     colormap = cgrad(:viridis, 256),
     contour_levels::Integer = 10,
     xtick_count::Integer = 3,
+    show_reference_legend::Bool = true,
     linecolor = :royalblue,
     refcolor = :darkorange,
 )
@@ -86,6 +89,9 @@ function plot_objective(
     names = param_names === nothing ? ["Param$(i)" for i in 1:n] : collect(param_names)
     xtick_count >= 2 || throw(ArgumentError("xtick_count must be >= 2"))
     contour_levels >= 0 || throw(ArgumentError("contour_levels must be >= 0"))
+    legend_position = show_reference_legend ? :topright : false
+    true_label = show_reference_legend ? "True" : ""
+    min_label = show_reference_legend ? "Min" : ""
 
     function param_range(x)
         if iszero(x)
@@ -161,7 +167,8 @@ function plot_objective(
                 xs,
                 yvals;
                 title = names[i],
-                legend = false,
+                legend = legend_position,
+                label = "",
                 color = linecolor,
                 linewidth = 0.6,
                 xticks = range(first(xs), last(xs), length = xtick_count),
@@ -176,7 +183,7 @@ function plot_objective(
                 markerstrokewidth = 0,
                 label = "",
             )
-            vline!(plt, [x0v[i]], color = refcolor, linewidth = 1.5)
+            vline!(plt, [x0v[i]], color = refcolor, linewidth = 1.5, label = true_label)
             ymin, idx = findmin(yvals)
             scatter!(
                 plt,
@@ -186,7 +193,7 @@ function plot_objective(
                 marker = :diamond,
                 color = linecolor,
                 markerstrokewidth = 0,
-                label = "",
+                label = min_label,
             )
             push!(one_d_plots, plt)
 
@@ -232,7 +239,8 @@ function plot_objective(
                         title = "($(names[i]), $(names[j]))",
                         color = colormap,
                         colorbar = show_colorbar,
-                        legend = false,
+                        legend = legend_position,
+                        label = "",
                         # Smooth the background so contours (interpolated) don't look offset vs. the heatmap.
                         interpolate = true,
                         # Make 2D plots visually consistent (do not enforce unit aspect ratio).
@@ -256,7 +264,7 @@ function plot_objective(
                             label = "",
                         )
                     end
-                    vline!(plt, [x0v[i]], color = refcolor, linewidth = 1.0, label = "")
+                    vline!(plt, [x0v[i]], color = refcolor, linewidth = 1.0, label = true_label)
                     hline!(plt, [x0v[j]], color = refcolor, linewidth = 1.0, label = "")
                     scatter!(
                         plt,
@@ -266,7 +274,7 @@ function plot_objective(
                         marker = :diamond,
                         color = linecolor,
                         markerstrokewidth = 0,
-                        label = "",
+                        label = min_label,
                     )
                     return plt
                 end

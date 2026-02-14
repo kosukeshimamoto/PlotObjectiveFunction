@@ -28,6 +28,19 @@ using PlotObjectiveFunction
     @test all(isfile, result.one_d)
     @test all(isfile, result.two_d)
 
+    hidden_legend_result = plot_objective(
+        f,
+        x0;
+        outdir = outdir,
+        basename = "test_no_legend",
+        resolution = 8,
+        output = :both,
+        show_reference_legend = false,
+    )
+    @test isfile(hidden_legend_result.summary)
+    @test length(hidden_legend_result.one_d) == length(x0)
+    @test length(hidden_legend_result.two_d) == length(x0) * (length(x0) - 1) ÷ 2
+
     @test_throws ArgumentError plot_objective(
         f,
         x0;
