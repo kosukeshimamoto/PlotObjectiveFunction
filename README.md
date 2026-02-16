@@ -4,7 +4,7 @@ Plot an objective function around an initial/true parameter vector.
 
 ## Install
 
-Use Julia `1.11.x` for both local and SLURM runs.
+Use Julia `1.9.x` for SLURM runs (recommended: `1.9.2`).
 
 ```julia
 import Pkg
@@ -118,10 +118,13 @@ SLURM run (`run_plot.sbatch` example):
 #SBATCH --output=%x-%j.out
 
 cd /Users/kosuke/Github/PlotObjectiveFunction
+module purge
+module load Julia/1.9.2
+which julia
+julia --version
 export JULIA_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
-export JULIA_MODULE=Julia/1.11
 export GKSwstype=100
 export GKS_WSTYPE=100
 
@@ -143,6 +146,8 @@ Individual files:
 - If a parameter value is zero, `zero_range` (default: 1.0) is used instead.
 - Set `use_threads=true` to parallelize objective evaluations. Actual speedup requires
   starting Julia with multiple threads (for example, `JULIA_NUM_THREADS=8`).
+- On DCC, `Julia/1.11.x` may map to a juliaup launcher in some environments; `Julia/1.9.2`
+  is the stable module path for this repository at the moment.
 - `run_plot_objective(...; backend=:auto)` automatically switches between local and SLURM modes
   based on `SLURM_JOB_ID`.
 - `run_plot_objective(...; parallel=:auto)` benchmarks serial vs threaded grid evaluation and
