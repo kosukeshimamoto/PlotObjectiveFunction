@@ -1,7 +1,12 @@
 module PlotObjectiveFunction
 
-export plot_objective, describe_output_combinations, print_output_combinations, write_output_combinations
+export plot_objective,
+    run_plot_objective,
+    describe_output_combinations,
+    print_output_combinations,
+    write_output_combinations
 
+using LinearAlgebra
 using Plots
 import GR
 
@@ -349,6 +354,312 @@ function plot_objective(
     end
 
     return (summary = summary_file, one_d = one_d_files, two_d = two_d_files)
+end
+
+"""
+    run_plot_objective(f, x0; backend=:auto, parallel=:manual, threads_per_task=nothing,
+                       blas_threads=nothing, use_threads=nothing,
+                       auto_samples_per_thread=2, auto_repeats=2, auto_min_speedup=1.05,
+                       kwargs...)
+
+Run `plot_objective` with runtime settings shared by local and SLURM execution.
+
+Keyword arguments:
+- `backend`: `:auto`, `:local`, or `:slurm`.
+- `parallel`: `:manual` or `:auto`.
+- `threads_per_task`: CPU budget for one Julia process.
+- `blas_threads`: BLAS thread count inside each objective evaluation.
+- `use_threads`: enable/disable `Threads.@threads` for objective grids.
+- `auto_samples_per_thread`: benchmark sample count per Julia thread when `parallel=:auto`.
+- `auto_repeats`: benchmark repetitions when `parallel=:auto`.
+- `auto_min_speedup`: minimum speedup required to enable threaded grid evaluation.
+
+Additional keyword arguments are forwarded to `plot_objective`.
+
+Returns a named tuple:
+`(summary=..., one_d=..., two_d=..., runtime=...)`.
+"""
+function run_plot_objective(
+    f,
+    x0::AbstractVector;
+    backend::Symbol = :auto,
+    parallel::Symbol = :manual,
+    threads_per_task::Union{Nothing, Integer} = nothing,
+    blas_threads::Union{Nothing, Integer} = nothing,
+    use_threads::Union{Nothing, Bool} = nothing,
+    auto_samples_per_thread::Integer = 2,
+    auto_repeats::Integer = 2,
+    auto_min_speedup::Real = 1.05,
+    kwargs...,
+)
+    resolved_backend = _resolve_backend(backend)
+    resolved_threads_per_task = _resolve_threads_per_task(resolved_backend, threads_per_task)
+    resolved_use_threads, resolved_blas_threads, auto_detail = _resolve_parallel_configuration(
+        f,
+        x0;
+        parallel = parallel,
+        threads_per_task = resolved_threads_per_task,
+        blas_threads = blas_threads,
+        use_threads = use_threads,
+        auto_samples_per_thread = auto_samples_per_thread,
+        auto_repeats = auto_repeats,
+        auto_min_speedup = auto_min_speedup,
+    )
+
+    previous_blas_threads = LinearAlgebra.BLAS.get_num_threads()
+    resolved_blas_threads != previous_blas_threads && LinearAlgebra.BLAS.set_num_threads(resolved_blas_threads)
+    try
+        plot_result = plot_objective(f, x0; use_threads = resolved_use_threads, kwargs...)
+        return (
+            summary = plot_result.summary,
+            one_d = plot_result.one_d,
+            two_d = plot_result.two_d,
+            runtime = (
+                backend = resolved_backend,
+                parallel = parallel,
+                threads_per_task = resolved_threads_per_task,
+                julia_threads = Threads.nthreads(),
+                blas_threads = resolved_blas_threads,
+                use_threads = resolved_use_threads,
+                auto = auto_detail,
+            ),
+        )
+    finally
+        resolved_blas_threads != previous_blas_threads &&
+            LinearAlgebra.BLAS.set_num_threads(previous_blas_threads)
+    end
+end
+
+function _resolve_backend(backend::Symbol)
+    backend == :auto && return haskey(ENV, "SLURM_JOB_ID") ? :slurm : :local
+    backend in (:local, :slurm) || throw(ArgumentError("backend must be :auto, :local, or :slurm"))
+    return backend
+end
+
+function _parse_positive_int(value::AbstractString, variable_name::AbstractString)
+    parsed_value = try
+        parse(Int, value)
+    catch
+        throw(ArgumentError("$variable_name must be a positive integer, got '$value'"))
+    end
+    parsed_value > 0 || throw(ArgumentError("$variable_name must be a positive integer, got '$value'"))
+    return parsed_value
+end
+
+function _resolve_threads_per_task(backend::Symbol, threads_per_task::Union{Nothing, Integer})
+    if threads_per_task !== nothing
+        threads_per_task > 0 || throw(ArgumentError("threads_per_task must be > 0"))
+        return threads_per_task
+    end
+    if backend == :slurm && haskey(ENV, "SLURM_CPUS_PER_TASK")
+        return _parse_positive_int(ENV["SLURM_CPUS_PER_TASK"], "SLURM_CPUS_PER_TASK")
+    end
+    return Threads.nthreads()
+end
+
+function _resolve_parallel_configuration(
+    f,
+    x0::AbstractVector;
+    parallel::Symbol,
+    threads_per_task::Integer,
+    blas_threads::Union{Nothing, Integer},
+    use_threads::Union{Nothing, Bool},
+    auto_samples_per_thread::Integer,
+    auto_repeats::Integer,
+    auto_min_speedup::Real,
+)
+    parallel in (:manual, :auto) || throw(ArgumentError("parallel must be :manual or :auto"))
+    if parallel == :manual
+        return _resolve_manual_parallel_configuration(
+            ;
+            threads_per_task = threads_per_task,
+            blas_threads = blas_threads,
+            use_threads = use_threads,
+        )
+    end
+    return _resolve_auto_parallel_configuration(
+        f,
+        x0;
+        threads_per_task = threads_per_task,
+        blas_threads = blas_threads,
+        use_threads = use_threads,
+        auto_samples_per_thread = auto_samples_per_thread,
+        auto_repeats = auto_repeats,
+        auto_min_speedup = auto_min_speedup,
+    )
+end
+
+function _resolve_manual_parallel_configuration(;
+    threads_per_task::Integer,
+    blas_threads::Union{Nothing, Integer},
+    use_threads::Union{Nothing, Bool},
+)
+    resolved_blas_threads = something(blas_threads, 1)
+    resolved_blas_threads > 0 || throw(ArgumentError("blas_threads must be > 0"))
+    resolved_blas_threads <= threads_per_task ||
+        throw(ArgumentError("blas_threads must be <= threads_per_task"))
+
+    resolved_use_threads = something(use_threads, false)
+    resolved_use_threads && Threads.nthreads() <= 1 &&
+        throw(ArgumentError("use_threads=true requires JULIA_NUM_THREADS > 1"))
+
+    return resolved_use_threads, resolved_blas_threads, (strategy = :manual,)
+end
+
+function _resolve_auto_parallel_configuration(
+    f,
+    x0::AbstractVector;
+    threads_per_task::Integer,
+    blas_threads::Union{Nothing, Integer},
+    use_threads::Union{Nothing, Bool},
+    auto_samples_per_thread::Integer,
+    auto_repeats::Integer,
+    auto_min_speedup::Real,
+)
+    auto_samples_per_thread > 0 || throw(ArgumentError("auto_samples_per_thread must be > 0"))
+    auto_repeats > 0 || throw(ArgumentError("auto_repeats must be > 0"))
+    auto_min_speedup >= 1 || throw(ArgumentError("auto_min_speedup must be >= 1"))
+
+    selected_blas_threads = if blas_threads === nothing
+        _select_auto_blas_threads(
+            f,
+            x0;
+            threads_per_task = threads_per_task,
+            auto_repeats = auto_repeats,
+        )
+    else
+        blas_threads
+    end
+    selected_blas_threads > 0 || throw(ArgumentError("blas_threads must be > 0"))
+    selected_blas_threads <= threads_per_task ||
+        throw(ArgumentError("blas_threads must be <= threads_per_task"))
+
+    benchmark_parameter_values = _build_benchmark_parameter_values(x0, auto_samples_per_thread)
+    previous_blas_threads = LinearAlgebra.BLAS.get_num_threads()
+    selected_use_threads = false
+    serial_seconds = Inf
+    threaded_seconds = Inf
+    try
+        LinearAlgebra.BLAS.set_num_threads(selected_blas_threads)
+        serial_seconds = _benchmark_serial_grid(f, benchmark_parameter_values, auto_repeats)
+        threaded_seconds = Threads.nthreads() > 1 ?
+            _benchmark_threaded_grid(f, benchmark_parameter_values, auto_repeats) : Inf
+        selected_use_threads = if use_threads === nothing
+            Threads.nthreads() > 1 &&
+                isfinite(threaded_seconds) &&
+                serial_seconds / threaded_seconds >= auto_min_speedup
+        else
+            use_threads
+        end
+    finally
+        LinearAlgebra.BLAS.set_num_threads(previous_blas_threads)
+    end
+    selected_use_threads && Threads.nthreads() <= 1 &&
+        throw(ArgumentError("use_threads=true requires JULIA_NUM_THREADS > 1"))
+
+    return selected_use_threads, selected_blas_threads, (
+        strategy = :auto,
+        serial_seconds = serial_seconds,
+        threaded_seconds = isfinite(threaded_seconds) ? threaded_seconds : nothing,
+        selected = selected_use_threads ? :threaded_grid : :serial_grid,
+    )
+end
+
+function _select_auto_blas_threads(
+    f,
+    x0::AbstractVector;
+    threads_per_task::Integer,
+    auto_repeats::Integer,
+)
+    threads_per_task == 1 && return 1
+    benchmark_input = collect(x0)
+    max_blas_threads = threads_per_task
+    candidate_threads = max_blas_threads == 1 ? (1,) : (1, max_blas_threads)
+    previous_blas_threads = LinearAlgebra.BLAS.get_num_threads()
+    selected_blas_threads = first(candidate_threads)
+    best_seconds = Inf
+    try
+        for candidate in candidate_threads
+            LinearAlgebra.BLAS.set_num_threads(candidate)
+            candidate_seconds = _benchmark_single_eval(f, benchmark_input, auto_repeats)
+            if candidate_seconds < best_seconds
+                best_seconds = candidate_seconds
+                selected_blas_threads = candidate
+            end
+        end
+    finally
+        LinearAlgebra.BLAS.set_num_threads(previous_blas_threads)
+    end
+    return selected_blas_threads
+end
+
+function _build_benchmark_parameter_values(x0::AbstractVector, auto_samples_per_thread::Integer)
+    if isempty(x0)
+        return [Float64[]]
+    end
+
+    num_samples = max(4, auto_samples_per_thread * max(2, Threads.nthreads()))
+    benchmark_parameter_values = Vector{Vector{Float64}}(undef, num_samples)
+    center_value = Float64(x0[1])
+    delta = iszero(center_value) ? 1.0 : abs(center_value) / 10
+    perturbations = range(-delta, delta, length = num_samples)
+    for sample_index in eachindex(perturbations)
+        parameter_values = Float64.(x0)
+        parameter_values[1] = center_value + perturbations[sample_index]
+        benchmark_parameter_values[sample_index] = parameter_values
+    end
+    return benchmark_parameter_values
+end
+
+function _benchmark_serial_grid(
+    f,
+    benchmark_parameter_values::Vector{Vector{Float64}},
+    auto_repeats::Integer,
+)
+    best_seconds = Inf
+    for _ in 1:auto_repeats
+        start_ns = time_ns()
+        total_objective = 0.0
+        for parameter_values in benchmark_parameter_values
+            total_objective += Float64(f(parameter_values))
+        end
+        elapsed_seconds = (time_ns() - start_ns) / 1e9
+        isfinite(total_objective) || throw(ArgumentError("objective function returned non-finite value"))
+        best_seconds = min(best_seconds, elapsed_seconds)
+    end
+    return best_seconds
+end
+
+function _benchmark_threaded_grid(
+    f,
+    benchmark_parameter_values::Vector{Vector{Float64}},
+    auto_repeats::Integer,
+)
+    Threads.nthreads() <= 1 && return Inf
+    best_seconds = Inf
+    for _ in 1:auto_repeats
+        partial_objectives = zeros(Float64, Threads.nthreads())
+        start_ns = time_ns()
+        Threads.@threads for sample_index in eachindex(benchmark_parameter_values)
+            partial_objectives[Threads.threadid()] += Float64(f(benchmark_parameter_values[sample_index]))
+        end
+        elapsed_seconds = (time_ns() - start_ns) / 1e9
+        isfinite(sum(partial_objectives)) || throw(ArgumentError("objective function returned non-finite value"))
+        best_seconds = min(best_seconds, elapsed_seconds)
+    end
+    return best_seconds
+end
+
+function _benchmark_single_eval(f, x0::AbstractVector, auto_repeats::Integer)
+    best_seconds = Inf
+    for _ in 1:auto_repeats
+        start_ns = time_ns()
+        objective_value = Float64(f(copy(x0)))
+        elapsed_seconds = (time_ns() - start_ns) / 1e9
+        isfinite(objective_value) || throw(ArgumentError("objective function returned non-finite value"))
+        best_seconds = min(best_seconds, elapsed_seconds)
+    end
+    return best_seconds
 end
 
 """

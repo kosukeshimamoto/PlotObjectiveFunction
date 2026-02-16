@@ -86,6 +86,92 @@ end
     @test !isfile(joinpath(outdir, "split.pdf"))
 end
 
+@testset "run_plot_objective" begin
+    f(x) = sum((x .- 1.0).^2)
+    x0 = [1.0, 1.0, 1.0]
+    outdir = mktempdir()
+
+    manual_result = run_plot_objective(
+        f,
+        x0;
+        outdir = outdir,
+        basename = "run_manual",
+        output = :summary,
+        resolution = 8,
+        parallel = :manual,
+    )
+    @test isfile(manual_result.summary)
+    @test manual_result.runtime.parallel == :manual
+    @test manual_result.runtime.use_threads == false
+    @test manual_result.runtime.blas_threads == 1
+    @test manual_result.runtime.auto.strategy == :manual
+
+    if Threads.nthreads() > 1
+        threaded_result = run_plot_objective(
+            f,
+            x0;
+            outdir = outdir,
+            basename = "run_manual_threads",
+            output = :summary,
+            resolution = 8,
+            parallel = :manual,
+            use_threads = true,
+            blas_threads = 1,
+        )
+        @test isfile(threaded_result.summary)
+        @test threaded_result.runtime.use_threads == true
+        @test threaded_result.runtime.blas_threads == 1
+    else
+        @test_throws ArgumentError run_plot_objective(
+            f,
+            x0;
+            outdir = outdir,
+            basename = "run_manual_threads",
+            output = :summary,
+            resolution = 8,
+            parallel = :manual,
+            use_threads = true,
+            blas_threads = 1,
+        )
+    end
+
+    auto_result = run_plot_objective(
+        f,
+        x0;
+        outdir = outdir,
+        basename = "run_auto",
+        output = :summary,
+        resolution = 8,
+        parallel = :auto,
+        auto_samples_per_thread = 1,
+        auto_repeats = 1,
+    )
+    @test isfile(auto_result.summary)
+    @test auto_result.runtime.parallel == :auto
+    @test auto_result.runtime.blas_threads >= 1
+    @test auto_result.runtime.auto.strategy == :auto
+    @test auto_result.runtime.auto.selected in (:threaded_grid, :serial_grid)
+
+    @test_throws ArgumentError run_plot_objective(
+        f,
+        x0;
+        outdir = outdir,
+        basename = "run_bad_backend",
+        output = :summary,
+        resolution = 8,
+        backend = :invalid,
+    )
+    @test_throws ArgumentError run_plot_objective(
+        f,
+        x0;
+        outdir = outdir,
+        basename = "run_bad_parallel",
+        output = :summary,
+        resolution = 8,
+        parallel = :invalid,
+    )
+end
+
 @testset "describe_output_combinations" begin
     function pick(combos; output, one_d, two_d, split_summary_pages)
         idx = findfirst(

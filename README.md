@@ -62,6 +62,25 @@ To evaluate objective grids in parallel:
 plot_objective(f, x0; use_threads=true)
 ```
 
+To run with shared local/SLURM runtime options:
+
+```julia
+result = run_plot_objective(
+    f,
+    x0;
+    backend=:auto,          # :auto, :local, :slurm
+    parallel=:auto,         # :manual or :auto
+    threads_per_task=8,     # optional
+    blas_threads=1,         # optional
+    use_threads=nothing,    # optional (nothing => auto/manual default)
+    resolution=50,
+    output=:summary,
+)
+
+result.summary
+result.runtime
+```
+
 To see what files would be written for all combinations of output-related options (dry-run):
 
 ```julia
@@ -74,6 +93,43 @@ To actually write all combinations into subfolders under `plots/`:
 write_output_combinations(f, x0; outdir="plots/output_combinations", resolution=10)
 ```
 
+## Local/SLURM Pipeline
+
+The script `examples/quadratic5_demo.jl` works both locally and on SLURM.
+
+Local preview:
+
+```bash
+POF_RESOLUTION=12 julia --project=. examples/quadratic5_demo.jl
+```
+
+SLURM run (`run_plot.sbatch` example):
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=plot-objective
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16G
+#SBATCH --time=02:00:00
+#SBATCH --output=%x-%j.out
+
+cd /Users/kosuke/Github/PlotObjectiveFunction
+export JULIA_NUM_THREADS=${SLURM_CPUS_PER_TASK}
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export GKSwstype=100
+export GKS_WSTYPE=100
+
+export POF_BACKEND=slurm
+export POF_PARALLEL=auto
+export POF_RESOLUTION=50
+export POF_OUTDIR=plots/slurm_full
+
+julia --project=. examples/quadratic5_demo.jl
+```
+
 Individual files:
 - 1D PDFs for each parameter: `objective_plot_1d_p1.pdf`, ...
 - 2D PDFs for parameter combinations (i < j): `objective_plot_2d_p1_p2.pdf`, ...
@@ -84,6 +140,10 @@ Individual files:
 - If a parameter value is zero, `zero_range` (default: 1.0) is used instead.
 - Set `use_threads=true` to parallelize objective evaluations. Actual speedup requires
   starting Julia with multiple threads (for example, `JULIA_NUM_THREADS=8`).
+- `run_plot_objective(...; backend=:auto)` automatically switches between local and SLURM modes
+  based on `SLURM_JOB_ID`.
+- `run_plot_objective(...; parallel=:auto)` benchmarks serial vs threaded grid evaluation and
+  chooses the faster option.
 - 1D plots include a red vertical line at the `x0` position.
 - 2D plots include red cross-lines at `(x0[i], x0[j])`.
 - The legend marks the reference point as `True` and the sampled minimum as `Min`.
