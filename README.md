@@ -4,6 +4,8 @@ Plot an objective function around an initial/true parameter vector.
 
 ## Install
 
+Use Julia `1.11.x` for both local and SLURM runs.
+
 ```julia
 import Pkg
 Pkg.activate(".")
@@ -119,6 +121,7 @@ cd /Users/kosuke/Github/PlotObjectiveFunction
 export JULIA_NUM_THREADS=${SLURM_CPUS_PER_TASK}
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
+export JULIA_MODULE=Julia/1.11
 export GKSwstype=100
 export GKS_WSTYPE=100
 
