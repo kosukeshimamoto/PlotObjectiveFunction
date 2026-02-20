@@ -1,6 +1,7 @@
 name = "PlotObjectiveFunction"
 uuid = "625cc0a4-79ac-4c43-bfad-682ae8af5e77"
 version = "0.1.0"
+license = "MIT"
 
 [deps]
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"

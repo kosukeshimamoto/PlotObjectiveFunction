@@ -160,3 +160,8 @@ Individual files:
   as 1D first, then 2D.
 - In this repository, `plots/` is ignored except for one sample output:
   `plots/quadratic5_demo/objective_plot_quad5.pdf`.
+
+## License
+
+This project is licensed under the MIT License.
+See `LICENSE` for details.
