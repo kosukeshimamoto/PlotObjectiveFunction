@@ -136,6 +136,10 @@ export POF_OUTDIR=plots/slurm_full
 julia --project=. examples/quadratic5_demo.jl
 ```
 
+Summary preview (first page of the 5-parameter demo):
+
+![Summary page 1 preview](plots/quadratic5_demo/objective_plot_quad5_page1.png)
+
 Individual files:
 - 1D PDFs for each parameter: `objective_plot_1d_p1.pdf`, ...
 - 2D PDFs for parameter combinations (i < j): `objective_plot_2d_p1_p2.pdf`, ...

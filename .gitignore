@@ -2,4 +2,5 @@ plots/*
 !plots/quadratic5_demo/
 plots/quadratic5_demo/*
 !plots/quadratic5_demo/objective_plot_quad5.pdf
+!plots/quadratic5_demo/objective_plot_quad5_page1.png
 slurm_manual_test/
